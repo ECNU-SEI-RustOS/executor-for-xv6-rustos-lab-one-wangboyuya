@@ -915,6 +915,45 @@ impl PageTable {
             debug_assert_eq!(src, va.as_usize());
         }
     }
+
+    /// Print the page table in a hierarchical format
+    pub fn vm_print(&self, level: usize) {
+        // Print the page table address at the top level
+        if level == 0 {
+            println!("page table {:#x}", self as *const PageTable as usize);
+        }
+
+        // Iterate through all 512 page table entries
+        for (i, pte) in self.data.iter().enumerate() {
+            // Only print valid entries
+            if pte.is_valid() {
+                // Print indentation based on level (level + 1 to start from 1 dot pair)
+                let print_level = level + 1;
+                for j in 0..print_level {
+                    if j > 0 {
+                        print!(" ");
+                    }
+                    print!("..");
+                }
+                if print_level > 0 {
+                    print!(" ");
+                }
+
+                // Print the entry index, PTE value, and physical address
+                println!("{}: pte {:#x} pa {:#x}",
+                    i,
+                    pte.data,
+                    pte.as_phys_addr().as_usize()
+                );
+
+                // If this is not a leaf page (points to another page table), recurse
+                if !pte.is_leaf() && level < 2 {
+                    let next_pt = unsafe { &*pte.as_page_table() };
+                    next_pt.vm_print(level + 1);
+                }
+            }
+        }
+    }
 }
 
 impl Drop for PageTable {

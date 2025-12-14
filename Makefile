@@ -110,6 +110,7 @@ UPROGS=\
 	$(USER)/_rm\
 	$(USER)/_sh\
 	$(USER)/_stressfs\
+	$(USER)/_trace\
 	$(USER)/_usertests\
 	$(USER)/_grind\
 	$(USER)/_wc\

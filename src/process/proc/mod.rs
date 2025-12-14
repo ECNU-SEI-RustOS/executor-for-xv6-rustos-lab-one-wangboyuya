@@ -25,6 +25,33 @@ use self::syscall::Syscall;
 mod syscall;
 mod elf;
 
+// System call names for tracing
+static SYSCALL_NAMES: [&str; 23] = [
+    "",
+    "fork",
+    "exit",
+    "wait",
+    "pipe",
+    "read",
+    "kill",
+    "exec",
+    "fstat",
+    "chdir",
+    "dup",
+    "getpid",
+    "sbrk",
+    "sleep",
+    "uptime",
+    "open",
+    "write",
+    "mknod",
+    "unlink",
+    "link",
+    "mkdir",
+    "close",
+    "trace",
+];
+
 /// 进程状态枚举类型，表示操作系统内核中进程的不同生命周期状态。
 ///
 /// 该枚举用于进程调度与管理，反映进程当前的执行或等待状态，
@@ -102,6 +129,8 @@ pub struct ProcData {
     pub pagetable: Option<Box<PageTable>>,
     /// 进程当前工作目录的 inode。
     pub cwd: Option<Inode>,
+    /// 系统调用追踪掩码，用于控制追踪哪些系统调用。
+    pub trace_mask: i32,
 }
 
 
@@ -116,6 +145,7 @@ impl ProcData {
             tf: ptr::null_mut(),
             pagetable: None,
             cwd: None,
+            trace_mask: 0,
         }
     }
 
@@ -520,6 +550,7 @@ impl Proc {
             19 => self.sys_link(),
             20 => self.sys_mkdir(),
             21 => self.sys_close(),
+            22 => self.sys_trace(),
             _ => {
                 panic!("unknown syscall num: {}", a7);
             }
@@ -528,6 +559,23 @@ impl Proc {
             Ok(ret) => ret,
             Err(()) => -1isize as usize,
         };
+
+        // Print trace information if enabled
+        let pdata = self.data.get_mut();
+        let trace_mask = pdata.trace_mask;
+        let syscall_num = a7 as usize;
+
+        // Check if this syscall should be traced
+        if trace_mask & (1 << syscall_num) != 0 {
+            let pid = self.excl.lock().pid;
+            let syscall_name = if syscall_num < SYSCALL_NAMES.len() {
+                SYSCALL_NAMES[syscall_num]
+            } else {
+                "unknown"
+            };
+            let return_value = tf.a0 as isize;
+            println!("{}: syscall {} -> {}", pid, syscall_name, return_value);
+        }
     }
 
     /// # 功能说明
@@ -687,9 +735,12 @@ impl Proc {
         // clone opened files and cwd
         cdata.open_files.clone_from(&pdata.open_files);
         cdata.cwd.clone_from(&pdata.cwd);
-        
+
         // copy process name
         cdata.name.copy_from_slice(&pdata.name);
+
+        // copy trace mask
+        cdata.trace_mask = pdata.trace_mask;
 
         let cpid = cexcl.pid;
 
